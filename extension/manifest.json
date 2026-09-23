@@ -1,0 +1,51 @@
+{
+  "manifest_version": 3,
+  "name": "X 畫師圖片收藏",
+  "version": "1.0.6",
+  "description": "在畫師的 X 媒體頁自動捲動，按畫師批次下載原貼文圖片，支援停止與續傳。",
+  "minimum_chrome_version": "120",
+  "permissions": [
+    "downloads",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*",
+    "https://pbs.twimg.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "X 畫師圖片收藏"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ],
+      "js": [
+        "core.js",
+        "content.js",
+        "popup.js",
+        "panel.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "popup.html",
+        "popup.css"
+      ],
+      "matches": [
+        "https://x.com/*",
+        "https://twitter.com/*"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>X 畫師圖片收藏</title><link rel="stylesheet" href="../extension/popup.css"></head>
+<body><header><span class="mark">↓</span><div><h1>畫師圖片收藏</h1><p>X 媒體頁 · 批次下載</p></div><span id="badge">準備中</span></header>
+<main><section class="artist"><span class="label">目前頁面</span><strong id="artist">正在確認畫師…</strong><p>圖片將存入下載位置下的<br><b>to be deleted folder／畫師帳號</b></p></section>
+<section class="limits" aria-label="下載範圍"><label for="limit">本次新增圖片上限<input id="limit" type="number" min="1" step="1" placeholder="不限張數"></label><div class="dates"><label for="from">發文起日<input id="from" type="date"></label><label for="to">發文迄日<input id="to" type="date"></label></div><small>全部留空＝無限制。日期包含起迄日，依瀏覽器時區。</small></section>
+<div class="actions"><button id="start" disabled>開始／接續收集</button><button id="stop" class="secondary" disabled>停止</button></div>
+<p id="note" role="status" aria-live="polite">正在讀取進度…</p>
+<section class="stats" aria-label="收集進度"><div><strong id="posts">0</strong><span>原貼文</span></div><div><strong id="images">0</strong><span>圖片</span></div><div><strong id="done">0</strong><span>已下載</span></div><div><strong id="errors">0</strong><span>需重試</span></div></section>
+<p id="pending"></p><p id="detail" role="alert"></p>
+<div class="footer-actions"><button id="retry" class="text" disabled>重試未完成項目</button><button id="export" class="text">匯出來源清單</button></div>
+<footer>保留原圖 · 依媒體 ID 去重 · 已下載圖片不佔本次額度<br>只收集目前畫師的圖片。保留 X 頁面，讓它持續載入；下載結果仍需自行挑選。</footer></main><script src="preview-mock.js"></script><script src="../extension/core.js"></script><script src="../extension/popup.js"></script></body></html>

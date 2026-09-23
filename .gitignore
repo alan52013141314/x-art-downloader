@@ -1,0 +1,6 @@
+node_modules/
+*.pem
+*.crx
+*.zip
+.env*
+*verification*.json
