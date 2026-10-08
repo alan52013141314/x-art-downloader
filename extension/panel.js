@@ -3,8 +3,8 @@
   if(document.getElementById('x-art-download-controls'))return;
   const host=document.createElement('div');host.id='x-art-download-controls';
   const root=host.attachShadow({mode:'open'});
-  const button=document.createElement('button');button.textContent='圖片收藏 v1.0.6';
-  button.setAttribute('aria-label','開啟圖片收藏 v1.0.6');
+  const button=document.createElement('button');button.textContent='圖片收藏 v1.1.0';
+  button.setAttribute('aria-label','開啟圖片收藏 v1.1.0');
   button.style.cssText='font:13px sans-serif;padding:11px 16px;border:1px solid #afc3ad;border-radius:9px;background:#285642;color:white;cursor:pointer';
   host.style.cssText='position:fixed;right:18px;bottom:18px;z-index:2147483647';
   root.append(button);document.documentElement.append(host);

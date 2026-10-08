@@ -11,7 +11,7 @@
     }
     return true;
   });
-  const pageError = () => /發生錯誤|超過速率限制|Something went wrong|Rate limit exceeded|These posts are protected|這些貼文受到保護/.test(document.querySelector('main')?.innerText || '');
+  const pageError = () => !!document.querySelector('input[name="password"]') || /\/(accounts\/login|challenge)\//.test(location.pathname) || /發生錯誤|超過速率限制|Something went wrong|Rate limit exceeded|These posts are protected|這些貼文受到保護|This account is private|這個帳號是私人帳號|Try again later/.test(document.querySelector('main')?.innerText || '');
 
   async function scan(artist, runId) {
     if (scanning) return;
@@ -47,6 +47,7 @@
   }
 
   async function inspect(post) {
+    if(C.isInstagram(post.artist))return inspectInstagram(post);
     let signature = '', stable = 0;
     for (let attempt=0; attempt<35; attempt++) {
       const assignment = await send({type:'ASSIGNMENT'});
@@ -63,6 +64,33 @@
     }
     await send({type:'POST_RESULT', id:post.id, error:'未能讀取原貼文圖片，保留為待重試'});
   }
+  async function inspectInstagram(post) {
+    const images=new Map(),visited=new Set();
+    let previous='',date='';
+    for(let slide=0;slide<20;slide++) {
+      let details,signature='',stable=0;
+      for(let attempt=0;attempt<35;attempt++) {
+        const job=await send({type:'ASSIGNMENT'});
+        if(job?.post?.id!==post.id||job.post.artist!==post.artist)return;
+        if(pageError())return send({type:'POST_RESULT',id:post.id,error:'Instagram 需要登入、頁面受限或載入失敗'});
+        const found=C.instagramDetails(document,post);
+        const changed=found?.signature && found.signature!==previous;
+        stable=changed&&found.signature===signature?stable+1:0;
+        signature=found?.signature||'';
+        if(changed&&stable>=2&&!visiblyLoading()){details=found;break;}
+        await sleep(800);
+      }
+      if(!details || visited.has(details.signature))return send({type:'POST_RESULT',id:post.id,error:'未能確認 Instagram 作者、圖片或下一張；保留為待重試'});
+      date=details.date||date;
+      for(const image of details.images)images.set(image.key,image);
+      visited.add(details.signature);
+      if(!details.next)return send({type:'POST_RESULT',id:post.id,date,images:[...images.values()]});
+      previous=details.signature;
+      details.next.click();
+      await sleep(800);
+    }
+    return send({type:'POST_RESULT',id:post.id,error:'Instagram 多圖尚未確認結尾；保留為待重試'});
+  }
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (message.type === 'START_SCAN') { scan(message.artist,message.runId); respond({ok:true}); }
     else if (message.type === 'STOP_SCAN') { scanning=false;generation++; respond({ok:true}); }
@@ -74,7 +102,7 @@
       const job = await send({type:'ASSIGNMENT'}).catch(()=>null);
       if (job?.post) { await inspect(job.post); return; }
       if (job?.scan && C.pageArtist(location.href)) { scan(job.scan.artist,job.scan.runId);return; }
-      if (!/\/status\/\d+/.test(location.pathname)) return;
+      if (!/\/status\/\d+|\/p\/[\w-]+/.test(location.pathname)) return;
       await sleep(700);
     }
   })();

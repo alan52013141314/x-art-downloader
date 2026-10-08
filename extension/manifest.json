@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "X 畫師圖片收藏",
-  "version": "1.0.6",
-  "description": "在畫師的 X 媒體頁自動捲動，按畫師批次下載原貼文圖片，支援停止與續傳。",
+  "name": "X / Instagram 畫師圖片收藏",
+  "version": "1.1.0",
+  "description": "從 X 媒體頁或 Instagram 個人頁收集圖片及多圖貼文，支援張數、日期範圍、停止與續傳。",
   "minimum_chrome_version": "120",
   "permissions": [
     "downloads",
@@ -12,20 +12,26 @@
   "host_permissions": [
     "https://x.com/*",
     "https://twitter.com/*",
-    "https://pbs.twimg.com/*"
+    "https://pbs.twimg.com/*",
+    "https://www.instagram.com/*",
+    "https://instagram.com/*",
+    "https://*.cdninstagram.com/*",
+    "https://*.fbcdn.net/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "X 畫師圖片收藏"
+    "default_title": "X / Instagram 畫師圖片收藏"
   },
   "content_scripts": [
     {
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.instagram.com/*",
+        "https://instagram.com/*"
       ],
       "js": [
         "core.js",
@@ -44,7 +50,9 @@
       ],
       "matches": [
         "https://x.com/*",
-        "https://twitter.com/*"
+        "https://twitter.com/*",
+        "https://www.instagram.com/*",
+        "https://instagram.com/*"
       ]
     }
   ]

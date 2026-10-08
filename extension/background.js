@@ -5,7 +5,7 @@ const excludedPosts = new Set(ArtExclusions.posts || []);
 let chain = Promise.resolve();
 let state;
 const empty = () => ({active:false, scanning:false, artist:null, sourceTab:null, workerTab:null,
-  working:null, posts:{}, media:{}, scanReason:'', note:'開啟畫師的 X 媒體頁，再按開始。'});
+  working:null, posts:{}, media:{}, scanReason:'', note:'開啟畫師的 X 媒體頁或 Instagram 個人頁，再按開始。'});
 function serial(fn) {
   const next = chain.then(async()=>{
     state ||= (await chrome.storage.local.get('state')).state || empty();
@@ -21,7 +21,7 @@ function trace(event, detail) {
   state.diagnostics=state.diagnostics.slice(-25);
 }
 const postKey = p => `${p.artist.toLowerCase()}/${p.id}`;
-const eligible = p => p.artist.toLowerCase()===state.artist?.toLowerCase() && C.inRange(p.postId||p.id,state.options||{});
+const eligible = p => p.artist.toLowerCase()===state.artist?.toLowerCase() && C.recordInRange(p,state.options||{});
 const runDone = () => Object.values(state.media).filter(m=>m.status==='done'&&m.runId===state.runId).length;
 const queuedImages = () => Object.values(state.media).filter(m=>eligible(m)&&['pending','downloading'].includes(m.status)).length;
 const waitForQueue = () => !!state.options?.maxImages && (queuedImages()>0 || Object.values(state.posts).some(p=>eligible(p)&&['pending','working'].includes(p.status)));
@@ -106,7 +106,7 @@ async function pump() {
         const dir=await folderReady();
         const response=await fetch(m.url,{credentials:'omit',signal:AbortSignal.timeout(30000)});
         if(!response.ok)throw Error('圖片伺服器回應 '+response.status);
-        if(new URL(response.url).hostname!=='pbs.twimg.com'||!response.headers.get('content-type')?.startsWith('image/'))throw Error('伺服器未回傳圖片檔案');
+        if(!C.mediaHost(response.url,m.artist)||!response.headers.get('content-type')?.startsWith('image/'))throw Error('伺服器未回傳圖片檔案');
         const blob=await response.blob();if(!blob.size)throw Error('圖片檔案是空的');
         m.savedFile=await ArtFolder.write(dir,C.filename(m),blob);m.bytes=blob.size;
         m.status='done';m.runId=state.runId;
@@ -138,7 +138,7 @@ async function pump() {
     Object.values(state.media).some(m=>eligible(m)&&['pending','downloading'].includes(m.status));
   if (!state.scanning && !work) {
     state.active=false;
-    state.note=['page_error','source_unavailable','loading_timeout','connection_lost'].includes(state.scanReason)?'X 頁面收集未完成；已找到的項目已處理，請恢復頁面後接續。':'這批已處理完畢。歷史完整度仍受 X 載入範圍影響。';
+    state.note=['page_error','source_unavailable','loading_timeout','connection_lost'].includes(state.scanReason)?'來源頁面收集未完成；已找到的項目已處理，請恢復頁面後接續。':'這批已處理完畢。歷史完整度仍受網站載入範圍影響。';
   }
   await save();
 }
@@ -172,7 +172,7 @@ async function handle(message,sender) {
     try {await folderReady();}catch(e){state.note=e.message;await save();return {error:e.message};}
     const tab=await chrome.tabs.get(message.tabId);
     const artist=C.pageArtist(tab.url);
-    if (!artist) return {error:'請先開啟畫師的 X「媒體」頁；排除帳號不會收集。'};
+    if (!artist) return {error:'請先開啟畫師的 X「媒體」頁或 Instagram 個人頁；排除帳號不會收集。'};
     state.options=C.options(message.options);
     state.active=true;state.scanning=true;state.artist=artist;state.sourceTab=tab.id;state.scanReason='';
     state.runGeneration=(state.runGeneration||0)+1;state.runId=String(state.runGeneration);state.lastScan=Date.now();
@@ -182,7 +182,7 @@ async function handle(message,sender) {
     await closeWorker();
     await save();
     try {await chrome.tabs.sendMessage(tab.id,{type:'START_SCAN',artist,runId:state.runId});}
-    catch {state.active=false;state.scanning=false;state.note='請重新整理 X 頁面後再開始。';await save();return {error:state.note};}
+    catch {state.active=false;state.scanning=false;state.note='請重新整理 來源頁面後再開始。';await save();return {error:state.note};}
     await pump();return summary();
   }
   if (message.type==='STOP') {
@@ -199,7 +199,14 @@ async function handle(message,sender) {
     state.options=C.options(message.options||state.options);
     state.runGeneration=(state.runGeneration||0)+1;state.runId=String(state.runGeneration);
     for(const p of Object.values(state.posts))if(p.status==='error'&&eligible(p))p.status='pending';
-    for(const m of Object.values(state.media))if(m.status==='error'&&eligible(m)){m.status='pending';m.attempts=0;}
+    for(const m of Object.values(state.media))if(m.status==='error'&&eligible(m)){
+      if(C.isInstagram(m.artist)) {
+        // Instagram CDN links expire. Re-open the source to refresh the URL.
+        const post=state.posts[`${m.artist.toLowerCase()}/${m.postId}`];
+        if(post)post.status='pending';
+      } else m.status='pending';
+      m.attempts=0;
+    }
     state.active=true;state.note='正在重試未完成項目。';await save();await pump();return summary();
   }
   if (message.type==='EXPORT') return {state};
@@ -226,17 +233,26 @@ async function handle(message,sender) {
   if (message.type==='SCAN_END'&&state.scanning&&sender.tab?.id===state.sourceTab&&message.runId===state.runId) {
     state.scanning=false;state.scanReason=message.reason;
     state.note=message.reason==='no_more_loaded'?'頁面暫時沒有更多圖片，正在完成已找到的貼文。':'收集已停止，正在處理已找到的圖片。';
-    if(message.reason==='page_error')state.note='X 頁面載入失敗；歷史收集未完成。';
+    if(message.reason==='page_error')state.note='來源頁面載入失敗；歷史收集未完成。';
     await save();await pump();return {ok:true};
   }
   if (message.type==='POST_RESULT'&&sender.tab?.id===state.workerTab&&state.working) {
     const p=state.posts[state.working];
     if(p.id!==message.id)return {error:'Wrong post'};
     trace('post_result',{post:p.id,images:message.images?.length||0,error:message.error});
+    if(C.isInstagram(p.artist)) {
+      p.date=C.validDay(message.date)?message.date:'';
+      if(!p.date&&(state.options?.from||state.options?.to)&&!message.error)message.error='無法確認 Instagram 發文日期，未下載；請重試。';
+    }
     let added=0;
     if(!message.error)for(const raw of (message.images||[]).slice(0,20)) {
       const m=C.media(raw.observedUrl,p);
-      if(m&&allowedImage(m)){added++;if(!state.media[m.key])state.media[m.key]={...m,status:'pending',attempts:0};}
+      if(m&&allowedImage(m)){
+        added++;
+        const existing=state.media[m.key];
+        if(!existing)state.media[m.key]={...m,status:'pending',attempts:0};
+        else if(C.isInstagram(p.artist)&&existing.status!=='done'&&existing.status!=='downloading')Object.assign(existing,m,{status:'pending'});
+      }
     }
     p.status=message.error?'error':'done';p.error=message.error||'';p.images=added;
     // Hand downloads to the browser while the originating reader still exists.

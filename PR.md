@@ -8,3 +8,15 @@ Publish the image-downloader extension as a public GitHub repository with an ins
 4. Publish the repository and release ZIP; verify public visibility and release assets.
 
 Version 1.0.6 stops on folder-write failure, checks permission before starting, and pauses discovery while queued images cover the quantity budget.
+
+## 1.1.0 — Instagram support (2026-10-09)
+
+Requirement: support Instagram profile image posts and image carousels using the signed-in browser. Retain optional quantity/date limits (blank means unlimited), stop/resume and existing X history. Keep platforms in separate output folders. No server, login automation, Stories or video downloads.
+
+Plan:
+1. Add Instagram profile/post/CDN parsing and rendered carousel traversal, with author and date checks.
+2. Extend the existing queue and UI without migrating X records; add only required Instagram host permissions.
+3. Verify carousel, filtering, limits, resume and X regressions with fixtures; attempt a signed-in live check when a test profile is available.
+4. Synchronize the local extension, document limitations, and publish source/release to the existing public repository.
+
+Instagram saves the largest image URL supplied by the rendered page, which may be compressed. Historical completeness depends on what the site loads. Live verification requires the user to sign in.

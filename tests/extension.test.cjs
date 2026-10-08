@@ -8,6 +8,10 @@ const dir=path.join(__dirname,'../extension');
 const C=require(path.join(dir,'core.js'));
 const P={artist:'Artist_1',id:'1700000000000000001',url:'https://x.com/Artist_1/status/1700000000000000001'};
 const attachment=(n,artist=P.artist,id=P.id)=>`<a href="/${artist}/status/${id}/photo/${n}"><img src="https://pbs.twimg.com/media/Test_${n}?format=jpg&amp;name=small"></a>`;
+const IG={artist:'instagram:artist.one',id:'Abc_123',url:'https://www.instagram.com/p/Abc_123/'};
+const igURL=n=>`https://scontent.test.cdninstagram.com/v/t51/${n}_large.jpg?signature=keep-me`;
+const igImage=n=>`<img width="600" alt="Artwork" src="${igURL(n)}" srcset="${igURL(n).replace('large','small')} 300w, ${igURL(n)} 1080w">`;
+const igFixture=(body=igImage(1),date='2026-10-08T12:00:00Z',author='artist.one')=>`<main><article><header><a href="/${author}/"><img width="200" src="${igURL('avatar')}">${author}</a></header><div id="slides">${body}</div><a href="/p/${IG.id}/"><time datetime="${date}"></time></a><a href="/commenter/"><img width="200" src="${igURL('comment')}"></a></article><article>${igImage('suggestion')}</article><button aria-label="Next" id="outside">Other post</button></main>`;
 const fixture=()=>`<main><article><a href="/${P.artist}/status/${P.id}"><time>date</time></a>${[1,2,3,4].map(n=>attachment(n)).join('')}${attachment(5,'OtherArtist')}<img src="https://pbs.twimg.com/profile_images/abc.jpg"></article><article>${attachment(6,P.artist,'1700000000000000002')}</article></main>`;
 
 test('extracts all four source attachments, excluding avatars, quotes and other posts',()=>{
@@ -354,4 +358,116 @@ test('embedded X control panel starts the real message workflow with quantity an
   root.getElementById('start').click();await new Promise(setImmediate);
   const start=sent.find(m=>m.type==='START');assert.equal(start.tabId,1);assert.equal(start.options.maxImages,1);assert.equal(start.options.from,'2024-01-01');
   dom.window.close();
+});
+
+test('Instagram profile and post routing excludes reels, reserved pages and cross-site links',()=>{
+  assert.equal(C.pageArtist('https://www.instagram.com/Artist.One/?hl=en'),IG.artist);
+  assert.equal(C.pageArtist('https://instagram.com/artist_1/'),'instagram:artist_1');
+  for(const url of ['https://www.instagram.com/explore/','https://www.instagram.com/accounts/','https://www.instagram.com/artist.one/reels/','https://instagram.com.evil.test/artist.one/','http://instagram.com/artist.one/'])assert.equal(C.pageArtist(url),null);
+  assert.equal(C.postLink('/artist.one/p/Abc_123/',IG.artist).id,IG.id);
+  assert.equal(C.postLink('/other/p/Abc_123/',IG.artist),null);
+  assert.equal(C.postLink('/reel/Abc_123/',IG.artist),null);
+  assert.equal(C.postLink('https://evil.test/p/Abc_123/',IG.artist),null);
+  const doc=new JSDOM('<main><a href="/p/Abc_123/"><img></a><a href="/p/Abc_123/"><img></a><a href="/reel/Video/"><img></a></main>').window.document;
+  assert.equal(C.galleryPosts(doc,IG.artist).length,1);
+});
+
+test('Instagram largest supplied image keeps signatures and excludes avatars and recommendations',()=>{
+  const doc=new JSDOM(igFixture()).window.document;
+  const details=C.instagramDetails(doc,IG);
+  assert.equal(details.images.length,1);assert.equal(details.images[0].url,igURL(1));
+  assert.equal(details.next,undefined,'must not click navigation outside the source article');
+  assert.equal(details.date,'2026-10-08');
+  assert.equal(C.instagramDetails(new JSDOM(igFixture(undefined,undefined,'someone.else')).window.document,IG),null);
+  for(const url of ['https://cdninstagram.com.evil.test/a.jpg','https://evilfbcdn.net/a.jpg','https://pbs.twimg.com/media/A?format=jpg','http://cdninstagram.com/a.jpg','https://cdninstagram.com:123/a.jpg'])assert.equal(C.media(url,IG),null);
+  const saved=C.filename(details.images[0]);assert.match(saved,/^to be deleted folder\/Instagram\/artist.one\/2026-10-08_Abc_123_/);
+  assert.throws(()=>C.filename({...details.images[0],artist:'instagram:../oops'}));
+  assert.notEqual(C.media(igURL(1),{...IG,artist:'instagram:artist_1'}).key,C.media('https://pbs.twimg.com/media/1_large?format=jpg',P).key);
+});
+
+test('Instagram current div-based desktop layout finds exact post and excludes role-link avatars',()=>{
+  const html=`<main><div><div>${igImage(1)}<button aria-label="下一步"></button></div><div><span role="link"><img width="150" src="${igURL('avatar')}"></span><a href="/artist.one/">artist.one</a><time datetime="2026-10-09T12:00:00Z"></time><a href="/p/Abc_123/c/123/"><time datetime="2026-10-09T12:00:00Z"></time></a><a href="/artist.one/p/Abc_123/"><time datetime="2026-10-08T12:00:00Z"></time></a></div></div><div><a href="/artist.one/p/Other/">${igImage('recommendation')}</a></div></main>`;
+  const details=C.instagramDetails(new JSDOM(html).window.document,IG);
+  assert.equal(details.images.length,1);assert.equal(details.date,'2026-10-08');assert(details.next);
+});
+
+async function igInspect(html,onDOM=()=>{}) {
+  const dom=new JSDOM(html,{url:IG.url,runScripts:'outside-only'}),messages=[];
+  let resolve;const finished=new Promise(r=>resolve=r);
+  dom.window.chrome={runtime:{onMessage:event(),sendMessage:async m=>{
+    messages.push(m);if(m.type==='ASSIGNMENT')return {post:IG};
+    if(m.type==='POST_RESULT')resolve(m);return {};
+  }}};
+  dom.window.setTimeout=fn=>setImmediate(fn);
+  onDOM(dom.window.document);
+  for(const file of ['core.js','content.js'])dom.window.eval(fs.readFileSync(path.join(dir,file),'utf8'));
+  try{return await finished;}finally{dom.window.close();}
+}
+
+test('Instagram inspector advances an image/video/image carousel and excludes video posters',async()=>{
+  let clicks=0;
+  const result=await igInspect(igFixture(`${igImage(1)}<button aria-label="Next" id="next"></button>`),doc=>{
+    const slides=doc.getElementById('slides');
+    const next=doc.getElementById('next');
+    next.onclick=()=>{
+      clicks++;
+      slides.innerHTML=clicks===1?`<video src="https://video.example/clip.mp4"></video><img width="600" src="${igURL('poster')}">`:igImage(3);
+      if(clicks<2)slides.append(next);
+    };
+    doc.getElementById('outside').onclick=()=>{throw Error('unrelated navigation');};
+  });
+  assert.equal(result.error,undefined);assert.equal(clicks,2);assert.equal(result.images.length,2);
+  assert(result.images.every(m=>!m.mediaId.includes('poster')));
+});
+
+test('Instagram carousel that fails to advance reports an error rather than partial completion',async()=>{
+  const result=await igInspect(igFixture(`${igImage(1)}<button aria-label="下一張"></button>`));
+  assert.match(result.error,/待重試/);assert.equal(result.images,undefined);
+});
+
+async function igQueue(options={}) {
+  const h=harness({tabs:[[1,{id:1,url:'https://www.instagram.com/artist.one/'}]]});
+  assert.equal((await h.message({type:'START',tabId:1,options})).active,true);
+  await h.message({type:'FOUND',posts:[IG]},1);
+  return h;
+}
+test('Instagram unknown post dates are inspected, inclusive dates govern downloads, missing dates fail closed',async()=>{
+  for(const date of ['2026-10-07','2026-10-08','2026-10-09','']) {
+    const h=await igQueue({from:'2026-10-08',to:'2026-10-08'});
+    assert.notEqual(h.stored().state.workerTab,null);
+    await h.message({type:'POST_RESULT',id:IG.id,date,images:[C.media(igURL(1),IG)]},h.stored().state.workerTab);
+    assert.equal(h.calls.length,date==='2026-10-08'?1:0);
+    if(!date)assert.match((await h.message({type:'STATUS'})).recentErrors[0],/日期/);
+  }
+});
+
+test('Instagram quantity limit stops exactly and pending carousel images resume without duplicate downloads',async()=>{
+  const h=await igQueue({maxImages:2});
+  await h.message({type:'POST_RESULT',id:IG.id,date:'2026-10-08',images:[1,2,3].map(n=>C.media(igURL(n),IG))},h.stored().state.workerTab);
+  assert.equal(h.calls.length,2);await h.change(1,'complete');await h.change(2,'complete');
+  assert.equal((await h.message({type:'STATUS'})).active,false);
+  await h.message({type:'START',tabId:1,options:{maxImages:1}});
+  assert.equal(h.calls.length,3);await h.change(3,'complete');
+  assert.equal((await h.message({type:'STATUS'})).done,3);
+});
+
+test('Instagram signed URL failures re-inspect the source on retry and refresh expired links',async()=>{
+  const h=await igQueue({maxImages:1});
+  await h.message({type:'POST_RESULT',id:IG.id,date:'2026-10-08',images:[C.media(igURL(1),IG)]},h.stored().state.workerTab);
+  await h.change(1,'interrupted','SERVER_FORBIDDEN');await h.message({type:'STOP'});
+  await h.message({type:'RETRY'});assert.equal(h.calls.length,1);
+  const worker=h.stored().state.workerTab;assert.notEqual(worker,null);
+  const fresh=igURL(1).replace('keep-me','refreshed');
+  await h.message({type:'POST_RESULT',id:IG.id,date:'2026-10-08',images:[C.media(fresh,IG)]},worker);
+  assert.equal(h.calls.length,2);assert.equal(h.calls[1].url,fresh);
+});
+
+test('Instagram direct folder saves verified images with the same cap',async()=>{
+  const saved=[];
+  const h=harness({tabs:[[1,{id:1,url:'https://www.instagram.com/artist.one/'}]],folder:{directory:async()=>({name:'Drawing',queryPermission:async()=> 'granted'}),write:async(d,p)=>{saved.push(p);return p;}},fetch:async url=>({ok:true,url,headers:{get:()=> 'image/jpeg'},blob:async()=>({size:123})})});
+  await h.message({type:'SET_FOLDER'});await h.message({type:'START',tabId:1,options:{maxImages:1}});
+  await h.message({type:'FOUND',posts:[IG]},1);
+  await h.message({type:'POST_RESULT',id:IG.id,date:'2026-10-08',images:[1,2].map(n=>C.media(igURL(n),IG))},h.stored().state.workerTab);
+  const s=await h.message({type:'STATUS'});assert.equal(s.runDone,1);assert.equal(s.active,false);
+  assert.equal(saved.length,1);assert.match(saved[0],/\/Instagram\/artist.one\//);
 });
