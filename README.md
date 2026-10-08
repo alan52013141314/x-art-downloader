@@ -42,7 +42,7 @@ Replace the local `extension` files with the new version, then click **重新載
 - X and Instagram can change their page structures. This is an independent project and is not affiliated with X, Instagram, Meta or OpenAI.
 - Public package contains no personal artist lists, collection records, images, account credentials or signing key.
 - Permissions: downloads, extension-local storage, alarms, X/Twitter and Instagram pages, `pbs.twimg.com`, `*.cdninstagram.com` and `*.fbcdn.net`. No cookie permission. No credentials are exported.
-- X was tested in a Chromium embedded browser. Instagram's current signed-in desktop DOM was inspected during development; full installed-extension download verification is recorded separately in `TEST-RESULTS.md`. Chrome/Edge have not been separately tested here.
+- X and Instagram were tested in a Chromium embedded browser. Instagram verification includes 11 decoded output files, carousel attachments and automatic stop after a 9-image run; see `TEST-RESULTS.md`. Chrome/Edge have not been separately tested here.
 
 ## Development
 
